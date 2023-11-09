@@ -1,51 +1,56 @@
 #include <ESP8266WiFi.h>
-#include <ArduinoJson.h>
+#include "ThingSpeak.h"
 #include <DHT.h>
-#include <ESP8266HTTPClient.h>
 
-const char* ssid = "ชื่อ WiFi";
-const char* password = "รหัส WiFi";
+const char* ssid = "iPhone ของ Bank";
+const char* password = "11111111";
+
+unsigned long channelID = 2336982;
+const char* writeKey = "SMNB0W6BV560NICV";
+
+unsigned long lastTime = 0;
+unsigned long timerDelay = 15000;
+
+WiFiClient client;
 
 DHT dht(D4, DHT11);
-
-const char* serverAddress = "http://172.20.10.4:3000/sensors";  // ที่อยู่ของเซิร์ฟเวอร์ของคุณ
 
 void setup() {
   Serial.begin(115200);
   WiFi.mode(WIFI_STA);
+  ThingSpeak.begin(client);
   dht.begin();
 }
 
 void loop() {
-  float temperature = dht.readTemperature();
-  float humidity = dht.readHumidity();
-
-  if (!isnan(temperature) && !isnan(humidity)) {
-    StaticJsonDocument<200> doc;
-    doc["humidity"] = humidity;
-    doc["temperature"] = temperature;
-    doc["timestamp"] = millis();
-
-    String jsonData;
-    serializeJson(doc, jsonData);
-
-    HTTPClient http;
-    http.begin(serverAddress);
-    http.addHeader("Content-Type", "application/json");
-
-    int httpResponseCode = http.POST(jsonData);
-
-    if (httpResponseCode == 200) {
-      Serial.println("Data sent successfully.");
-    } else {
-      Serial.print("Failed to send data. HTTP error code: ");
-      Serial.println(httpResponseCode);
+  if ((millis() - lastTime) > timerDelay) {
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.print("Attempting to connect");
+      while (WiFi.status() != WL_CONNECTED) {
+        WiFi.begin(ssid, password);
+        delay(5000);
+      }
+      Serial.println("\nConnected.");
     }
 
-    http.end();
-  } else {
-    Serial.println("Failed to read data from the sensor.");
-  }
+    float temperature = dht.readTemperature();
+    float humidity = dht.readHumidity();
 
-  delay(15000);
+    if (!isnan(temperature) && !isnan(humidity)) {
+   
+      ThingSpeak.setField(1, temperature);
+      ThingSpeak.setField(2, humidity);
+
+      int x = ThingSpeak.writeFields(channelID, writeKey);
+      if (x == 200) {
+        Serial.println("Channel update successful.");
+      } else {
+        Serial.println("Problem updating channel. HTTP error code " + String(x));
+      }
+    } else {
+      Serial.println("Failed to read data from the sensor.");
+    }
+
+    lastTime = millis();
+  }
 }
